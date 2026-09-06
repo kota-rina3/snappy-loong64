@@ -47,7 +47,8 @@ jobs:
               # ---------- 1. 基础工具 ----------
               apt-get update
               apt-get install -y --no-install-recommends \
-                curl ca-certificates xz-utils file binutils build-essential pkg-config
+                curl ca-certificates xz-utils file binutils build-essential pkg-config \
+                git
 
               # ---------- 2. Node.js 22 (loong64 官方二进制) ----------
               NODE_VER=22.11.0
