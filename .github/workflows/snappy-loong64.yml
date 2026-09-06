@@ -24,8 +24,8 @@ jobs:
           bash -c '
             set -e
 
-            BUILD_DIR=/build/snappy
-            rm -rf /build && mkdir -p "$BUILD_DIR"
+            BUILD_DIR=./build/snappy773
+            mkdir -p "$BUILD_DIR"
             cd "$BUILD_DIR"
 
             apt update && apt upgrade -y
@@ -38,7 +38,6 @@ jobs:
               "https://github.com/Brooooooklyn/snappy/archive/refs/tags/v7.3.3.tar.gz"
             tar -xzf /tmp/snappy.tar.gz -C /tmp
             mv "/tmp/snappy-7.3.3"/* .
-            mv "/tmp/snappy-7.3.3"/.github . 2>/dev/null || true
             rm -rf /tmp/snappy.tar.gz /tmp/snappy-7.3.3
             ls -la
 
@@ -68,6 +67,16 @@ jobs:
               echo "=== yarn build failed ==="
               exit 1
             }
+
+            NODE_FILE=$(find . -name "*.node" -type f | head -n 1)
+            if [ -z "$NODE_FILE" ]; then
+                echo "No .node file found!"
+                exit 1
+            fi
+            echo "Found .node file: $NODE_FILE"
+            mkdir -p ./out
+            cp "$NODE_FILE" ./out/
+            ls -la ./out/
             
           '
 
@@ -75,4 +84,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: snappy-loong64-v7.3.3
-        path: ./
+        path: ./build/snappy773
