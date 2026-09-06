@@ -57,7 +57,7 @@ jobs:
 
             cargo build --target loongarch64-unknown-linux-gnu --verbose || echo "cargo build failed with exit code $?"
 
-            yarn install --immutable || {
+            yarn install || {
               echo "=== yarn install failed, dumping build logs ==="
               find /tmp -name "*.log" -exec cat {} \;
               exit 1
