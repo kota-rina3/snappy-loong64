@@ -1,17 +1,12 @@
 name: 编译构建 loong64 (snappy @ v7.3.3)
 #
-# 适配 Brooooooklyn/snappy v7.3.3（commit 8e2be83, 2025-09-11）：
-#   - packageManager: yarn@4.9.4（不是 7.4.x 上的 4.18.0）
-#   - main: index.js
-#   - napi.targets 数组未变，仍需在 package.json 里追加 loongarch64-unknown-linux-gnu
-#   - Cargo.toml 与 7.4.x 完全一致；snap 依赖同版本
-#   - 上游 CI 在 v7.3.3 用 actions/checkout@v5、Node 22、zig 0.14.1；本工作流无需这些
-#
-# 上游 fork 后的使用建议：
-#   1. 在 fork 里改 package.json：napi.targets 数组末尾加 "loongarch64-unknown-linux-gnu"
-#   2. 把本 yml 放到 fork 的 .github/workflows/ 目录
-#   3. （可选）将 on: workflow_dispatch 改为 on: workflow_call 或 push，
-#      让 v7.3.3 tag 上自动构建
+# 完全自包含的 deepin-loong64 编译流水线，不依赖 fork、不依赖 git ref fetch：
+#   1. 容器内 curl 拉上游 https://github.com/Brooooooklyn/snappy/archive/refs/tags/v7.3.3.tar.gz
+#   2. 容器内用 node -e 注入 loongarch64 target 到 package.json#napi.targets
+#   3. 容器内装 Node.js 22 + yarn 4.9.4 + Rust stable
+#   4. yarn install + yarn build --target loongarch64-unknown-linux-gnu
+#   5. file/ldd 验证 + 容器内原生 loong64 node 冒烟测试
+#   6. 产物 snappy.linux-loong64-gnu.node 挂回 host 的 dist/ 并上传 artifact
 
 on:
   workflow_dispatch:
@@ -22,21 +17,18 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-      - name: 检出代码（v7.3.3 tag）
-        uses: actions/checkout@v4
-        with:
-          ref: v7.3.3
+      - name: 创建产物输出目录
+        run: |
+          mkdir -p dist
+          chmod 777 dist
 
-      # deepin:crimson-loong64-v1.6.0 本身就是 loong64 镜像，docker 在 host 上
-      # 通过 binfmt_misc + QEMU user-mode 直接跑；不需要 setup-qemu-action
-      # （如果你在 macOS / Windows runner 上跑，需要保留 setup-qemu-action，
-      #  ubuntu-24.04 runner 上 docker 默认已注册 QEMU handler）。
+      # deepin:crimson-loong64-v1.6.0 本身就是 loong64 镜像，docker 在 ubuntu-24.04
+      # runner 上通过 binfmt_misc + QEMU user-mode 直接跑。
       - name: 在 deepin-loong64 容器中编译
         run: |
           docker run --platform linux/loong64 \
             --rm \
-            -v "${{ github.workspace }}:/workspace" \
-            -w /workspace \
+            -v "${{ github.workspace }}/dist:/dist" \
             linuxdeepin/deepin:crimson-loong64-v1.6.0 \
             bash -c '
               set -euxo pipefail
@@ -44,33 +36,68 @@ jobs:
               export CARGO_TERM_COLOR=never
               export CI=1
 
+              BUILD_DIR=/build/snappy
+              rm -rf /build && mkdir -p "$BUILD_DIR"
+              cd "$BUILD_DIR"
+
               # ---------- 1. 基础工具 ----------
               apt-get update
               apt-get install -y --no-install-recommends \
-                curl ca-certificates xz-utils file binutils build-essential pkg-config \
-                git
+                curl ca-certificates xz-utils file binutils build-essential pkg-config nodejs npm
+              # deepin 自带的 nodejs/npm 是旧版；后面 STEP 3 会用官方 linux-loong64 二进制覆盖
 
-              # ---------- 2. Node.js 22 (loong64 官方二进制) ----------
+              # ---------- 2. 拉取 v7.3.3 tarball（不依赖 git ref）----------
+              SNAPPY_VER=v7.3.3
+              curl -fsSL -o /tmp/snappy.tar.gz \
+                "https://github.com/Brooooooklyn/snappy/archive/refs/tags/${SNAPPY_VER}.tar.gz"
+              tar -xzf /tmp/snappy.tar.gz -C /tmp
+              mv "/tmp/snappy-7.3.3"/* .
+              mv "/tmp/snappy-7.3.3"/.github . 2>/dev/null || true
+              rm -rf /tmp/snappy.tar.gz /tmp/snappy-7.3.3
+              ls -la
+              echo "==> package.json#version:"
+              node -p "require(\"./package.json\").version"
+
+              # ---------- 2.5 注入 loongarch64 target 到 package.json ----------
+              # 不依赖 fork；用 node 直接 patch napi.targets 数组
+              node -e "
+                const fs = require(\"fs\");
+                const p = JSON.parse(fs.readFileSync(\"package.json\", \"utf8\"));
+                const want = \"loongarch64-unknown-linux-gnu\";
+                if (!p.napi.targets.includes(want)) {
+                  p.napi.targets.push(want);
+                  fs.writeFileSync(\"package.json\", JSON.stringify(p, null, 2) + \"\\n\");
+                  console.log(\"[+] appended\", want, \"to napi.targets\");
+                } else {
+                  console.log(\"[=] target already present\");
+                }
+              "
+              echo "==> napi.targets (tail):"
+              node -p "JSON.stringify(require(\"./package.json\").napi.targets.slice(-4), null, 2)"
+
+              # ---------- 3. Node.js 22 (loong64 官方二进制覆盖系统旧 nodejs) ----------
               NODE_VER=22.11.0
               cd /tmp
               curl -fsSLO "https://nodejs.org/dist/v${NODE_VER}/node-v${NODE_VER}-linux-loong64.tar.xz"
               mkdir -p /opt/node
               tar -xJf "node-v${NODE_VER}-linux-loong64.tar.xz" -C /opt/node --strip-components=1
+              # PATH 放到最前，覆盖 apt 装的旧 nodejs
+              export PATH="/opt/node/bin:$PATH"
               ln -sf /opt/node/bin/node   /usr/local/bin/node
               ln -sf /opt/node/bin/npm    /usr/local/bin/npm
               ln -sf /opt/node/bin/npx    /usr/local/bin/npx
               ln -sf /opt/node/bin/corepack /usr/local/bin/corepack
+              hash -r
               node -v
               npm -v
 
-              # ---------- 3. 启用 corepack + yarn ----------
-              # v7.3.3 上游 package.json#packageManager = "yarn@4.9.4"。
-              # 写死版本避免 corepack 在 loong64 上解析 latest 失败。
+              # ---------- 4. corepack + yarn 4.9.4 (对齐 v7.3.3 packageManager) ----------
+              cd "$BUILD_DIR"
               corepack enable
               corepack prepare yarn@4.9.4 --activate
               yarn --version
 
-              # ---------- 4. Rust stable + loongarch64 target ----------
+              # ---------- 5. Rust stable + loongarch64 target ----------
               curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs \
                 | sh -s -- -y --default-toolchain stable --profile minimal \
                         --target loongarch64-unknown-linux-gnu
@@ -78,13 +105,7 @@ jobs:
               rustc -vV
               rustup target list --installed
 
-              # ---------- 5. 编译 ----------
-              cd /workspace
-              ls -la
-
-              # napi-rs 在非 host target 下需要告诉 cc crate 使用 loongarch64 的
-              # C/C++ 编译器。deepin 容器内已自带 loongarch64-linux-gnu-g++，
-              # 用 .cargo/config.toml 指明即可，避免 cc crate 误用宿主 gcc。
+              # ---------- 6. .cargo/config.toml（cc crate 用 loongarch64 工具链） ----------
               mkdir -p .cargo
               cat > .cargo/config.toml <<EOF
               [target.loongarch64-unknown-linux-gnu]
@@ -96,22 +117,23 @@ jobs:
               EOF
               cat .cargo/config.toml
 
+              # ---------- 7. yarn install ----------
               yarn install --immutable
 
-              # yarn build 会跑 napi build --platform --release，加 --target 限定
-              # 单架构。napi-rs 自动调用 cc crate，链接器配置由上面的 .cargo/config.toml
-              # 决定。
+              # ---------- 8. 编译 ----------
+              # napi build 会通过 cc crate 调 loongarch64-linux-gnu-gcc/g++，
+              # 链接器配置由上面的 .cargo/config.toml 决定。
               yarn build --target loongarch64-unknown-linux-gnu
 
-              # ---------- 6. 验证产物 ----------
+              # ---------- 9. 验证产物 ----------
               ls -la
               file snappy.linux-loong64-gnu.node
               ldd snappy.linux-loong64-gnu.node 2>/dev/null || true
 
-              # ---------- 7. 冒烟测试（容器内原生 loong64 node） ----------
+              # ---------- 10. 冒烟测试（容器内原生 loong64 node） ----------
               node -e "
                 const snappy = require(\"./snappy.linux-loong64-gnu.node\");
-                const src = Buffer.from(\"hello snappy on loongarch64 🚀\".repeat(2000));
+                const src = Buffer.from(\"hello snappy on loongarch64 \".repeat(2000));
                 const cmp = snappy.compressSync(src);
                 const dec = snappy.uncompressSync(cmp);
                 const ok  = dec.length === src.length && dec.equals(src);
@@ -119,15 +141,16 @@ jobs:
                             \"src=\" + src.length, \"cmp=\" + cmp.length, \"dec=\" + dec.length);
                 if (!ok) process.exit(1);
               "
+
+              # ---------- 11. 把产物拷到挂载点供 host 上传 ----------
+              cp -v snappy.linux-loong64-gnu.node /dist/
+              ls -la /dist/
             '
 
-      - name: 拷贝产物到 dist/
+      - name: 验证产物已挂回
         run: |
-          mkdir -p dist
-          # docker run --rm 之后容器已删除，但产物在挂载点里仍在
-          ls -la snappy.linux-loong64-gnu.node 2>/dev/null || true
-          cp -f snappy.linux-loong64-gnu.node dist/ 2>/dev/null || true
           ls -la dist/
+          file dist/snappy.linux-loong64-gnu.node 2>/dev/null || true
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
