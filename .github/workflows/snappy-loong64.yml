@@ -32,7 +32,7 @@ jobs:
             apt install -y \
               curl ca-certificates xz-utils file \
               binutils build-essential pkg-config \
-              cmake make
+              cmake make libsnappy-dev
 
             curl -fsSL -o /tmp/snappy.tar.gz \
               "https://github.com/Brooooooklyn/snappy/archive/refs/tags/v7.3.3.tar.gz"
@@ -58,10 +58,17 @@ jobs:
 
             cargo build --target loongarch64-unknown-linux-gnu --verbose || echo "cargo build failed with exit code $?"
 
-            yarn install --immutable
-            yarn build --target loongarch64-unknown-linux-gnu
-            
+            yarn install --immutable || {
+              echo "=== yarn install failed, dumping build logs ==="
+              find /tmp -name "*.log" -exec cat {} \;
+              exit 1
+            }
 
+            yarn build --target loongarch64-unknown-linux-gnu || {
+              echo "=== yarn build failed ==="
+              exit 1
+            }
+            
           '
 
     - name: 上传构建产物
