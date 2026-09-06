@@ -27,7 +27,6 @@ jobs:
       - name: 在 deepin-loong64 容器中编译
         run: |
           docker run --platform linux/loong64 \
-            --rm \
             -v "${{ github.workspace }}/dist:/dist" \
             linuxdeepin/deepin:crimson-loong64-v1.6.0 \
             bash -c '
@@ -57,23 +56,6 @@ jobs:
               ls -la
               echo "==> package.json#version:"
               node -p "require(\"./package.json\").version"
-
-              # ---------- 2.5 注入 loongarch64 target 到 package.json ----------
-              # 不依赖 fork；用 node 直接 patch napi.targets 数组
-              node -e "
-                const fs = require(\"fs\");
-                const p = JSON.parse(fs.readFileSync(\"package.json\", \"utf8\"));
-                const want = \"loongarch64-unknown-linux-gnu\";
-                if (!p.napi.targets.includes(want)) {
-                  p.napi.targets.push(want);
-                  fs.writeFileSync(\"package.json\", JSON.stringify(p, null, 2) + \"\\n\");
-                  console.log(\"[+] appended\", want, \"to napi.targets\");
-                } else {
-                  console.log(\"[=] target already present\");
-                }
-              "
-              echo "==> napi.targets (tail):"
-              node -p "JSON.stringify(require(\"./package.json\").napi.targets.slice(-4), null, 2)"
 
               # ---------- 3. Node.js 22 (loong64 官方二进制覆盖系统旧 nodejs) ----------
               NODE_VER=22.11.0
