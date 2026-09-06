@@ -84,4 +84,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: snappy-loong64-v7.3.3
-        path: ./build/snappy773
+        path: ./
