@@ -76,6 +76,7 @@ jobs:
             echo "Found .node file: $NODE_FILE"
             mkdir -p ./out
             cp "$NODE_FILE" ./out/
+            chmod 777 ./out/*.node
             ls -la ./out/
             
           '
@@ -84,4 +85,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: snappy-loong64-v7.3.3
-        path: ./
+        path: ./build/snappy773/out
