@@ -27,8 +27,9 @@ jobs:
       - name: 在 deepin-loong64 容器中编译
         run: |
           docker run --platform linux/loong64 \
-            -v "${{ github.workspace }}/dist:/dist" \
-            linuxdeepin/deepin:crimson-loong64 \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            linuxdeepin/deepin:crimson-loong64-v1.6.0 \
             bash -c '
               set -euxo pipefail
               export DEBIAN_FRONTEND=noninteractive
