@@ -22,13 +22,29 @@ jobs:
           mkdir -p dist
           chmod 777 dist
 
-      # deepin:crimson-loong64-v1.6.0 本身就是 loong64 镜像，docker 在 ubuntu-24.04
-      # runner 上通过 binfmt_misc + QEMU user-mode 直接跑。
+      # GitHub Actions 的 ubuntu-24.04 runner 是 x86_64，默认没装 QEMU user-mode
+      # emulation。要跑 linux/loong64 容器必须先注册 binfmt_misc handler。
+      # setup-qemu-action 会拉 qemu-user-static + tonistiigi/binfmt 注册所有平台。
+      - name: 注册 QEMU (loong64 emulation)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: loongarch64
+
+      # setup-qemu-action 只在它自己的容器里注册；要让本 job 后续 docker run
+      # 能用到，必须 reset 一次 binfmt（multiarch/qemu-user-static --reset 会
+      # 把 handler 写到 host 的 /proc/sys/fs/binfmt_misc）。
+      - name: 重置 binfmt_misc handler
+        run: |
+          docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+
+      # deepin:crimson-loong64-v1.6.0 是 loongarch64 镜像，靠上面注册的 QEMU
+      # 在 x86_64 runner 上跑（user-mode emulation，编译会比较慢，预计 30~60 min）。
       - name: 在 deepin-loong64 容器中编译
         run: |
           docker run --platform linux/loong64 \
+            --rm \
+            -v "${{ github.workspace }}/dist:/dist" \
             -v "${{ github.workspace }}:/workspace" \
-            -w /workspace \
             linuxdeepin/deepin:crimson-loong64-v1.6.0 \
             bash -c '
               set -euxo pipefail
@@ -57,6 +73,25 @@ jobs:
               ls -la
               echo "==> package.json#version:"
               node -p "require(\"./package.json\").version"
+
+              # ---------- 2.5 注入 loongarch64 target 到 package.json ----------
+              # 不依赖 fork；用 node 直接 patch napi.targets 数组。
+              # napi-rs 的 --target 参数会去 targets 数组里查；
+              # 不在数组里就会报 "unknown target"。
+              node -e "
+                const fs = require('fs');
+                const p = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+                const want = 'loongarch64-unknown-linux-gnu';
+                if (!p.napi.targets.includes(want)) {
+                  p.napi.targets.push(want);
+                  fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
+                  console.log('[+] appended', want, 'to napi.targets');
+                } else {
+                  console.log('[=] target already present');
+                }
+              "
+              echo "==> napi.targets (tail):"
+              node -p "JSON.stringify(require('./package.json').napi.targets.slice(-4), null, 2)"
 
               # ---------- 3. Node.js 22 (loong64 官方二进制覆盖系统旧 nodejs) ----------
               NODE_VER=22.11.0
