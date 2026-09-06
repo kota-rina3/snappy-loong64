@@ -57,8 +57,8 @@ jobs:
             . "$HOME/.cargo/env"
             
             mkdir -p .cargo
-            printf '[target.loongarch64-unknown-linux-gnu]\nlinker = "loongarch64-linux-gnu-gcc"\nar = "loongarch64-linux-gnu-ar"\n\n[build]\ntarget = "loongarch64-unknown-linux-gnu"\n' > .cargo/config.toml
-
+            printf '[build]\ntarget = "loongarch64-unknown-linux-gnu"\n' > .cargo/config.toml
+            
             yarn install --immutable
             yarn build --target loongarch64-unknown-linux-gnu
 
