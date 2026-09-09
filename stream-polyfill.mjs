@@ -1,9 +1,20 @@
 // Shared, browser-safe Web Streams helpers + native-or-polyfill wiring.
 //
+// The ES module twin of `stream-polyfill.js`, imported by `browser-entry.js`.
+// Plain Rollup cannot read named exports out of CommonJS, so the browser path
+// needs real `export` statements. `main.js` is CommonJS and cannot require an ES
+// module, so it loads the twin instead. See
+// https://github.com/Brooooooklyn/snappy/issues/357.
+//
+// The two files carry the same body between the shared markers, apart from the
+// `export` keyword. `__test__/cjs-entry.spec.ts` fails if they drift apart.
+//
 // On a native build the Rust `compressStream` / `uncompressStream` transforms
 // exist on the binding and are used directly. On the wasm build those tokio-
 // backed fns are compiled out, so we fall back to a buffered polyfill over the
 // (tokio-free) streaming class API.
+
+/* --- shared start: keep byte-identical with the twin file, see cjs-entry.spec.ts --- */
 
 /**
  * Concatenate an array of `Uint8Array` chunks into a single `Uint8Array`.
@@ -134,3 +145,5 @@ export function honestStreams(binding) {
     Decompressor: binding.Decompressor,
   })
 }
+
+/* --- shared end --- */
