@@ -1,3 +1,9 @@
+## [7.4.3](https://github.com/Brooooooklyn/snappy/compare/v7.4.2...v7.4.3) (2026-09-09)
+
+
+### Bug Fixes
+
+* never require() an ES module from the CommonJS entry ([#359](https://github.com/Brooooooklyn/snappy/issues/359)) ([5cbe274](https://github.com/Brooooooklyn/snappy/commit/5cbe274ec1c4ab7947906f0350baa76a65bc7ad3)), closes [#357](https://github.com/Brooooooklyn/snappy/issues/357)
 ## [7.4.2](https://github.com/Brooooooklyn/snappy/compare/v7.4.1...v7.4.2) (2026-08-20)
 
 
