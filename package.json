@@ -1,6 +1,6 @@
 {
   "name": "snappy",
-  "version": "7.4.2",
+  "version": "7.4.3",
   "description": "Fastest Snappy compression library in Node.js",
   "main": "main.js",
   "types": "main.d.ts",
@@ -33,7 +33,8 @@
     "browser-entry.js",
     "browser-entry.d.ts",
     "stream-polyfill.js",
-    "stream-polyfill.mjs"
+    "stream-polyfill.mjs",
+    "node-stream.js"
   ],
   "napi": {
     "binaryName": "snappy",
